@@ -1,0 +1,31 @@
+{
+  "name": "youtube-watch-party",
+  "version": "1.0.0",
+  "description": "A simple YouTube vibeRoom app with room sync and chat.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "migrate": "node migrate.js",
+    "dev": "concurrently \"node server.js\" \"cd client && npm run dev\"",
+    "build": "cd client && npm run build"
+  },
+  "keywords": [
+    "youtube",
+    "watch-party",
+    "socket.io",
+    "express"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.4",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.4",
+    "socket.io": "^4.8.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

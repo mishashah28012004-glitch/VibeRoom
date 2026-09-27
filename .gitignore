@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+client/.env
+client/.env.*
+!client/.env.example
+node_modules/
+client/node_modules/
+client/dist/
+public/assets/
+public/index.html
+*.log
+npm-debug.log*

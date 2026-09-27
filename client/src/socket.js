@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 
-const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 // Create a fresh socket instance. We do NOT autoConnect — RoomPage controls
 // the lifecycle explicitly. A new instance is created each time this module

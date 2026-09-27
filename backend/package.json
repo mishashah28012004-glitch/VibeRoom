@@ -1,13 +1,13 @@
 {
-  "name": "youtube-watch-party",
+  "name": "viberoom-backend",
   "version": "1.0.0",
   "description": "A simple YouTube vibeRoom app with room sync and chat.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "migrate": "node migrate.js",
-    "dev": "concurrently \"node server.js\" \"cd client && npm run dev\"",
-    "build": "cd client && npm run build"
+    "dev": "concurrently \"node server.js\" \"npm --prefix ../client run dev\"",
+    "build": "npm --prefix ../client run build"
   },
   "keywords": [
     "youtube",
@@ -27,5 +27,8 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.5"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   }
 }

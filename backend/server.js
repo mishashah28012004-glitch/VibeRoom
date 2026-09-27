@@ -3,7 +3,6 @@ const { randomUUID } = require('crypto');
 const express    = require('express');
 const cors       = require('cors');
 const http       = require('http');
-const path       = require('path');
 const { Server } = require('socket.io');
 const pool       = require('./db');
 const { verifyToken } = require('./auth');
@@ -12,6 +11,9 @@ const roomsRouter = require('./routes/rooms');
 const app    = express();
 const server = http.createServer(app);
 const configuredOrigins = (process.env.CLIENT_ORIGIN || '').split(',').map(origin => origin.trim()).filter(Boolean);
+if (process.env.NODE_ENV === 'production' && configuredOrigins.length === 0) {
+  throw new Error('CLIENT_ORIGIN must contain the deployed frontend origin in production.');
+}
 const corsOrigin = configuredOrigins.length
   ? configuredOrigins
   : process.env.NODE_ENV === 'production' ? false : '*';
@@ -27,13 +29,12 @@ app.set('io', io);
 
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', roomsRouter);
 
 // ── global async error handler for /api routes ─────────────────────────────
 app.use('/api', (err, req, res, next) => {
-  console.error('[API Error]', err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  console.error('[API Error]', err.code || 'UNEXPECTED_ERROR');
+  res.status(err.status || 500).json({ error: 'Internal server error' });
 });
 
 // ── role helpers ──────────────────────────────────────────────────────────────
@@ -544,11 +545,20 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
 });
 
-// ── SPA fallback (non-API routes only) ──────────────────────────────────────────
-app.get('*', (_, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+async function startServer() {
+  try {
+    const connection = await pool.getConnection();
+    connection.release();
+  } catch (err) {
+    console.error('[DB] Unable to connect to the configured MySQL database.', err.code || 'CONNECTION_ERROR');
+    await pool.end().catch(() => {});
+    process.exitCode = 1;
+    return;
+  }
 
-server.listen(PORT, () => {
-  console.log(`VibeRoomon http://localhost:${PORT}`);
-});
+  server.listen(PORT, () => {
+    console.log(`VibeRoom listening on port ${PORT}`);
+  });
+}
+
+startServer();

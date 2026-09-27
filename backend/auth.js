@@ -2,7 +2,7 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const SECRET = process.env.JWT_SECRET;
 
-if (!SECRET || SECRET === 'change_this_to_a_long_random_secret_string') {
+if (!SECRET || SECRET.length < 32 || SECRET === 'replace_with_a_long_random_secret') {
   throw new Error('Set JWT_SECRET to a unique value in the environment before starting the server.');
 }
 

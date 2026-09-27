@@ -1,183 +1,151 @@
 # VibeRoom
 
-VibeRoom is a YouTube watch-party application. A Host creates a room and controls the video; Moderators can also control playback and handle requests. Participants and Viewers watch, chat, and may request supported playback actions.
-
-## Features
-
-- Room creation with a unique six-character code and invite links
-- Host, Moderator, Participant, and Viewer roles
-- Synchronized YouTube video, play/pause, and seek state
-- Host/Moderator approval for participant playback requests
-- Participant list, role assignment, removal, and Host transfer
-- Room-scoped chat
-- MySQL-backed rooms, memberships, roles, and current video state
-- Socket.IO reconnect and late-join state synchronization
-
-## Architecture
-
-```mermaid
-flowchart LR
-  Browser[React + YouTube IFrame API] <-->|REST and Socket.IO| Server[Express + Socket.IO]
-  Server <-->|Parameterized SQL| DB[(MySQL)]
-  Host[Host or Moderator player events] -->|validated playback events| Server
-  Server -->|state and time updates| Viewers[Participant and Viewer players]
-```
-
-Vite serves the React client during development and proxies `/api` and `/socket.io` to Express. In production, Vite builds the client into `public`, which Express serves from the same origin by default. `client/src/socket.js` owns the Socket.IO connection and REST helpers. `RoomPage` joins and reconnects to a room, while `YoutubePlayer` translates YouTube IFrame API state into validated socket events and applies server updates to other players.
-
-The server verifies the guest JWT and room membership when a socket joins. Playback and management handlers check the role held in the database-backed room membership; client-side disabled controls are only a usability layer. Approved requests are stored server-side, validated, and executed without changing the requester’s role.
+VibeRoom is a real-time YouTube watch-party application with room membership, roles, synchronized playback, participant requests, and chat. The React/Vite frontend and Express/Socket.IO/MySQL backend deploy independently.
 
 ## Project Structure
 
 ```text
-youtube-watch-party/
-  auth.js                    JWT signing and middleware
-  db.js                      MySQL connection pool
-  migrate.js                 Additive schema setup
-  server.js                  Express routes, Socket.IO, room state
-  routes/rooms.js            Room and participant REST endpoints
-  public/                    Production client output and static files
-  client/
-    src/App.jsx               Lobby-to-room session flow
-    src/pages/                JoinPage.jsx, RoomPage.jsx
-    src/components/           Chat, ConfirmDialog, ParticipantsList,
-                              RequestPanel, YoutubePlayer
-    src/socket.js             REST and Socket.IO client
-    vite.config.js            Dev proxy and production build output
+VibeRoom/
+  client/                 React + Vite frontend; Netlify base directory
+    public/_redirects     Netlify SPA refresh fallback
+    src/                  UI, REST client, and Socket.IO client
+    .env.example
+    package.json
+    vite.config.js
+  backend/                Express + Socket.IO + MySQL API; Render root
+    routes/rooms.js       Authentication, room, membership, and role endpoints
+    server.js             REST API, socket events, and health check
+    db.js                 MySQL connection pool
+    auth.js               JWT signing and validation
+    migrate.js            Additive schema initialization
+    package.json
+    .env.example
+    .gitignore
+  netlify.toml
+  render.yaml
 ```
+
+The old root `public/` assets are retained as legacy files; the separated backend does not serve them. Current frontend files and dependencies live under `client/`. Backend files and dependencies live under `backend/`.
+
+## Features And Connections
+
+- Guest identity is created by `POST /api/auth/guest`; a signed JWT is used for room membership and authenticated endpoints.
+- Rooms can be generated or manually created, checked, joined, and queried. Hosts can assign roles, remove participants, and transfer ownership.
+- Socket.IO validates a user's token and room membership on `join-room`. Host/moderator playback events update persisted video state and synchronize viewers.
+- Approved participant playback requests, live room chat, participant updates, and host/role changes use the existing Socket.IO protocol.
+- MySQL stores users, rooms, room participants, room events, and room bans. The server keeps transient chat and pending requests in memory.
+
+REST endpoints:
+
+- `POST /api/auth/guest`
+- `POST /api/rooms/generate-code`
+- `GET /api/rooms/check/:roomCode`
+- `POST /api/rooms`
+- `GET /api/rooms/:roomCode`
+- `POST /api/rooms/:roomCode/join`
+- `GET /api/rooms/:roomCode/participants`
+- `PATCH /api/rooms/:roomCode/participants/:userId/role`
+- `DELETE /api/rooms/:roomCode/participants/:userId`
+- `POST /api/rooms/:roomCode/transfer-host`
+- `GET /health` (includes a database connectivity check)
+
+The Socket.IO flow preserves `playback:play`, `playback:pause`, `playback:seek`, `playback:changeVideo`, `video-state`, `request:action`, `request:respond`, `room-chat`, `participants:update`, and the existing role/removal/host-transfer events.
 
 ## Requirements
 
 - Node.js 20.19+ or 22.12+
-- MySQL 8+ (local or hosted)
 - npm
+- A reachable MySQL database (local or hosted)
 
-## Local Setup
+## Local Development
 
-From PowerShell in the repository root:
+Create the backend environment file and install backend dependencies from PowerShell:
 
 ```powershell
-npm install
-npm --prefix client install
+Set-Location backend
 Copy-Item .env.example .env
+npm install
 ```
 
-Edit `.env` with the database connection details. Replace the JWT placeholder with a unique secret; for example, generate one locally with:
-
-```powershell
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-Create the database if it does not already exist:
+Edit `backend/.env` with a reachable MySQL host, database name, username, password, and a unique JWT secret of at least 32 characters. Set `CLIENT_ORIGIN=http://localhost:5173`. Create the database if needed, without dropping existing data:
 
 ```sql
 CREATE DATABASE watchparty CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Run the additive migration. It creates missing tables and does not drop or clear existing data:
+The migration uses only `CREATE TABLE IF NOT EXISTS`; run it once against the selected database:
 
 ```powershell
 npm run migrate
-```
-
-Run both services together with `npm run dev`, or use separate terminals:
-
-```powershell
-# Repository root: API and Socket.IO on port 3000
 npm start
 ```
 
+In a second terminal, install and run the frontend:
+
 ```powershell
-# Client directory: Vite on port 5173
 Set-Location client
-npm run dev -- --host localhost --port 5173
+npm install
+Copy-Item .env.example .env
+npm run dev
 ```
 
-Open `http://localhost:5173`. If that port is busy, choose an available Vite port such as `5175` and update `CLIENT_ORIGIN` to that exact origin. The Vite proxy defaults to `http://localhost:3000`.
+Open the Vite URL, normally `http://localhost:5173`. With `VITE_API_URL` blank, Vite proxies `/api` and `/socket.io` to `http://localhost:3000`. To use another backend port locally, set `VITE_API_PROXY_TARGET` in `client/.env` and update the backend `PORT` and `CLIENT_ORIGIN` accordingly.
 
-Build the production client with:
+Build and preview the frontend independently:
 
 ```powershell
+Set-Location client
 npm run build
+npm run preview
 ```
-
-The build writes to `public` and intentionally does not empty that directory, preserving other static files. Express serves the built application and API from port `3000` by default.
 
 ## Environment Variables
 
-Backend values belong in the repository-root `.env` file and must not be committed.
+Set these on the Render backend service. `PORT` is supplied by Render and defaults to `3000` locally.
 
-| Variable | Purpose |
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `PORT` | Platform/local default | HTTP and Socket.IO port |
+| `DB_HOST` | Yes | MySQL server hostname; use the hosted provider's remote hostname on Render |
+| `DB_PORT` | No, defaults to `3306` | MySQL server port |
+| `DB_NAME` | Yes | Existing MySQL database name |
+| `DB_USER` | Yes | MySQL username |
+| `DB_PASS` | Yes | MySQL password |
+| `JWT_SECRET` | Yes | Unique signing secret, at least 32 characters |
+| `CLIENT_ORIGIN` | Yes in production | Exact Netlify site origin; comma-separate additional trusted origins |
+
+For local development, `CLIENT_ORIGIN` should include the Vite origin. Production must use HTTPS origins and must not use `*`. Keep all backend secrets only in Render's environment settings or the ignored `backend/.env`; never add them to `client/.env` or `VITE_*` variables.
+
+Netlify needs one build-time environment variable:
+
+| Variable | Value |
 | --- | --- |
-| `PORT` | Express and Socket.IO port; defaults to `3000` |
-| `DB_HOST` | MySQL host |
-| `DB_PORT` | MySQL port; defaults to `3306` |
-| `DB_NAME` | Database name; example uses `watchparty` |
-| `DB_USER` | MySQL user |
-| `DB_PASS` | MySQL password |
-| `JWT_SECRET` | Unique signing secret; required, with no insecure fallback |
-| `CLIENT_ORIGIN` | Allowed frontend origin(s) for cross-origin access; comma-separate multiple origins |
+| `VITE_API_URL` | Render backend origin, such as `https://viberoom-backend.onrender.com` (no `/api` suffix) |
 
-Optional Vite variables belong in `client/.env` or the frontend build environment. See `client/.env.example`.
+`VITE_API_URL` is public browser configuration, not a secret. The client uses it for both REST and Socket.IO. Netlify's SPA fallback is in `client/public/_redirects`.
 
-| Variable | Purpose |
-| --- | --- |
-| `VITE_API_BASE_URL` | Backend origin for a separately hosted frontend; blank uses the current origin |
-| `VITE_API_PROXY_TARGET` | Development proxy target; defaults to `http://localhost:3000` |
+## Deploy
 
-`VITE_` variables are included in browser code. Never put database credentials or `JWT_SECRET` in them.
+### Render Backend
 
-## Roles and Requests
+1. Provision a remote MySQL database. Ensure it permits connections from Render and note its host, port, database name, user, and password. Use the database containing existing VibeRoom data if migrating an existing deployment; do not create a replacement database unintentionally.
+2. Create a Render Web Service from this repository using the included `render.yaml`, or configure it manually with root directory `backend`, build command `npm install`, start command `npm start`, and health check path `/health`.
+3. Set `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, `JWT_SECRET`, and `CLIENT_ORIGIN` in Render. Set `CLIENT_ORIGIN` to the exact Netlify origin after creating the site. Render supplies `PORT`; `DB_PORT` defaults to `3306` in the Blueprint.
+4. Run the additive schema migration once using the Render Shell: `npm run migrate` from the backend root. This creates missing tables but does not drop or clear existing tables.
+5. Verify the service's `/health` response reports `{"ok":true,"db":"connected"}`. The API process intentionally does not accept traffic when the configured MySQL connection cannot be established.
 
-| Permission | Host | Moderator | Participant / Viewer |
-| --- | --- | --- | --- |
-| Play, pause, seek, change video | Yes | Yes | Request only |
-| Approve/reject playback requests | Yes | Yes | No |
-| Assign roles | Yes | No | No |
-| Remove participants | Yes | Viewers/Participants only | No |
-| Transfer Host | Yes | No | No |
-| Chat | Yes | Yes | Yes |
+### Netlify Frontend
 
-New members join as Viewers. The room creator is assigned Host in the room-creation transaction. A Host may promote a member to Moderator. An approved request performs only that validated action; it never promotes the requester. Removed users are recorded in `room_bans` and the room join endpoint rejects them.
+1. Import the same GitHub repository into Netlify.
+2. Set base directory to `client`, build command to `npm run build`, and publish directory to `dist`. These values are also recorded in the root `netlify.toml`.
+3. Set `VITE_API_URL` to the Render service origin, with no trailing slash or `/api` suffix, then deploy/redeploy so the value is included in the Vite build.
+4. Set Render `CLIENT_ORIGIN` to the deployed Netlify site origin (for example, `https://your-site.netlify.app`). Add any additional exact frontend origins as a comma-separated list, then redeploy the backend.
+5. Confirm `/health`, guest creation, room creation/join, Socket.IO WebSocket connection, playback synchronization, chat, and participant updates using two browser sessions.
 
-## Socket.IO Flow
+The backend can run locally and the frontend can build locally without deployment credentials. Actual hosted database, account, and two-browser integration tests require valid external services and must be run after provisioning; no deployment is claimed here.
 
-- `join-room`: verifies the signed token and persisted room membership, then sends `room-state` and the participant list.
-- `playback:play`, `playback:pause`, `playback:seek`, and `playback:changeVideo`: accepted only from Host/Moderator sockets, update persisted room state, and broadcast to the room.
-- `video-state`: periodic Host/Moderator time snapshots correct drift and support reconnects; buffering samples are skipped.
-- `request:action` / `request:respond`: the server records a pending request, sends it only to Host/Moderators, validates the response against that record, then applies the approved action.
-- `role:assign`, `participant:remove`, and `host:transfer`: role-checked management events update database membership and notify connected clients.
-- `room-chat`: carries real user messages. Join/leave status notices are marked as system events and are excluded from chat history.
+## Database And Runtime Notes
 
-## Database and Runtime State
+The migration creates `users`, `rooms`, `room_participants`, `room_events`, and `room_bans` if absent. It does not create the database itself and does not drop data. Room membership, roles, bans, and video state are persistent. Chat history and pending playback approvals are in-memory only, and a single backend instance is expected until shared Socket.IO and transient state are configured.
 
-- `users`: guest display names and the latest socket ID.
-- `rooms`: unique room code, Host, video ID/title, playing flag, and last playback time.
-- `room_participants`: per-room membership and role, unique on `(room_id, user_id)`.
-- `room_events`: role, removal, and Host-transfer audit events.
-- `room_bans`: removed users, unique per room/user; foreign-key cascades apply only when a room or user is deleted.
-
-Room, participant, role, and video state persist in MySQL. The server interpolates the current playing time in an in-memory timer and falls back to the persisted update timestamp after restart. Pending approvals and chat history are in memory and are not retained across server restarts. There is no automatic room/user cleanup endpoint. A single server instance is expected; horizontal scaling needs a Socket.IO adapter and shared timer/request state.
-
-## Deployment Preparation
-
-A single Node web service on Render or Railway is the simplest deployment: it serves the built React app, REST API, and Socket.IO from one origin.
-
-1. Provision a MySQL database and a Node web service.
-2. Use build command `npm ci && npm ci --prefix client && npm run build`.
-3. Use start command `npm start`.
-4. Set `PORT`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`, and a newly generated `JWT_SECRET` in the service environment.
-5. Run `npm run migrate` once against the hosted database using the provider’s shell or release command.
-6. Verify `/health` and test a room from two browser sessions. Confirm the host, frontend origin, and Socket.IO WebSocket connection match the deployment configuration.
-
-For a separately hosted frontend, set `VITE_API_BASE_URL` to the backend origin at build time and set backend `CLIENT_ORIGIN` to the frontend origin. Keep HTTPS on both origins. Do not deploy with the `.env.example` JWT placeholder. No public deployment has been performed or verified.
-
-**Live URL:** Not deployed. Replace this line with the verified service URL after deployment.
-
-## Validation
-
-The client provides `npm run lint` and `npm run build`. The repository currently has no automated test files or backend test script. The backend can be syntax-checked with `node --check server.js`, `node --check auth.js`, `node --check routes/rooms.js`, and `node --check migrate.js`. Complete room, role, playback, request, and reconnect verification in separate Host and Viewer sessions before release.
-
-## Limitations
-
-YouTube playback depends on each video allowing embedding and on browser autoplay policy. Chat and pending requests are not persistent. The in-memory timer and request queue require a single backend instance until a shared store/Socket.IO adapter is added. Room data is not automatically expired or deleted.
+YouTube playback depends on each video's embed permissions and browser autoplay policy. A hosted MySQL provider may require additional network allowlisting or TLS configuration. Confirm the provider's connection requirements before deployment.

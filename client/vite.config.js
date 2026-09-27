@@ -12,7 +12,6 @@ export default defineConfig(({ mode }) => {
         '/api': proxyTarget,
         '/socket.io': { target: proxyTarget, ws: true }
       }
-    },
-    build: { outDir: '../public', emptyOutDir: false }
+    }
   };
 });

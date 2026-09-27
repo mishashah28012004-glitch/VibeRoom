@@ -142,6 +142,12 @@ Netlify needs one build-time environment variable:
 4. Set Render `CLIENT_ORIGIN` to the deployed Netlify site origin (for example, `https://your-site.netlify.app`). Add any additional exact frontend origins as a comma-separated list, then redeploy the backend.
 5. Confirm `/health`, guest creation, room creation/join, Socket.IO WebSocket connection, playback synchronization, chat, and participant updates using two browser sessions.
 
+### Railway Backend And Vercel Frontend
+
+For Railway, configure the service root directory as `/backend`, build command as `npm install`, start command as `npm start`, and health check path as `/health`. The backend `railway.json` supplies the build/start/health-check settings when Railway uses that config file. Set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`, `JWT_SECRET`, and `CLIENT_ORIGIN` in the Railway service variables. Set `CLIENT_ORIGIN` to `https://vibe-room-flax.vercel.app` (include `http://localhost:5173` only if local development should also be allowed). Run `npm run migrate` once in the Railway service shell after verifying the database values.
+
+For Vercel, configure the project root directory as `client`, framework preset as Vite, and set the project environment variable `VITE_API_URL` to `https://viberoom-production-1cf2.up.railway.app` without a trailing slash. Redeploy after changing the environment variable. `client/public/_redirects` is for Netlify; Vercel's Vite SPA fallback is handled by its static deployment behavior for this app's root-only route.
+
 The backend can run locally and the frontend can build locally without deployment credentials. Actual hosted database, account, and two-browser integration tests require valid external services and must be run after provisioning; no deployment is claimed here.
 
 ## Database And Runtime Notes
